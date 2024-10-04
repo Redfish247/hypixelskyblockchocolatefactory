@@ -1,0 +1,331 @@
+import pygame
+import sys
+import random
+
+# Initialize pygame
+pygame.init()
+
+# Screen dimensions
+SCREEN_WIDTH = 1920
+SCREEN_HEIGHT = 1000
+
+# Colors
+WHITE = (255, 255, 255)
+BLACK = (0, 0, 0)
+
+# Game Variables
+chocolates = 0
+chocolates_per_second = 0
+rabbits = {
+    "Rabbit Bro": {"count": 0, "rate": 0.2, "cost": 50, "scale": 1.25, "img": "rabbit_bro.png"},
+    "Rabbit Cousin": {"count": 0, "rate": 1, "cost": 300, "scale": 1.3, "img": "rabbit_cousin.png"},
+    "Rabbit Sis": {"count": 0, "rate": 5, "cost": 1000, "scale": 1.35, "img": "rabbit_sis.png"},
+    "Rabbit Daddy": {"count": 0, "rate": 20, "cost": 5000, "scale": 1.4, "img": "rabbit_daddy.png"},
+    "Rabbit Granny": {"count": 0, "rate": 50, "cost": 20000, "scale": 1.45, "img": "rabbit_granny.png"},
+    "Rabbit Uncle": {"count": 0, "rate": 100, "cost": 100000, "scale": 1.5, "img": "rabbit_uncle.png"},
+}
+
+power_ups = [
+    {"name": "Double Click", "cost": 2000, "multiplier": 2.0, "img": "double_click.png"},
+    {"name": "Double Rabbit Production", "cost": 5000, "multiplier": 2.0, "img": "double_rabbit_production.png"},
+    {"name": "Triple Click", "cost": 10000, "multiplier": 3.0, "img": "triple_click.png"},
+    {"name": "Triple Rabbit Production", "cost": 20000, "multiplier": 3.0, "img": "triple_rabbit_production.png"},
+    {"name": "Ultimate Production", "cost": 50000, "multiplier": 5.0, "img": "ultimate_production.png"}
+]
+
+# Load images safely with error handling
+def load_image_safe(path, fallback_color=(0, 255, 0)):
+    """Tries to load an image, or uses a solid color if the file is missing."""
+    try:
+        return pygame.image.load(path)
+    except pygame.error:
+        print(f"Warning: Failed to load image {path}. Using fallback color.")
+        surface = pygame.Surface((100, 100))
+        surface.fill(fallback_color)
+        return surface
+
+# Load images
+chocolate_img = load_image_safe("chocolate_button.png", (139, 69, 19))  # Chocolate is brown!
+background_img = load_image_safe("background.png", (135, 206, 250))     # Sky blue background
+hershey_kiss_img = load_image_safe("hershey_kiss.png")  # Load Hershey's Kisses image
+
+# Scale the Hershey's Kisses image to a smaller size
+kiss_scale_factor = 0.2  # Change this value to scale the size
+hershey_kiss_img = pygame.transform.scale(hershey_kiss_img, 
+                                           (int(hershey_kiss_img.get_width() * kiss_scale_factor), 
+                                            int(hershey_kiss_img.get_height() * kiss_scale_factor)))
+
+# Load power-up images
+powerup_images = {
+    "Double Click": load_image_safe("double_click.png"),
+    "Double Rabbit Production": load_image_safe("double_rabbit_production.png"),
+    "Triple Click": load_image_safe("triple_click.png"),
+    "Triple Rabbit Production": load_image_safe("triple_rabbit_production.png"),
+    "Ultimate Production": load_image_safe("ultimate_production.png"),
+}
+
+# Create the screen
+screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
+pygame.display.set_caption("Chocolate Clicker")
+
+# Fonts
+font = pygame.font.SysFont(None, 28)  # Smaller font size
+powerup_font = pygame.font.SysFont(None, 36)  # Font for power-ups
+
+def show_text(text, x, y, font=font):
+    """Display text on screen."""
+    img = font.render(text, True, WHITE)  # Text color changed to white
+    screen.blit(img, (x, y))
+
+def draw_shop():
+    """Draw the shop on the screen."""
+    y_offset = 30  # Start even higher up on the screen
+    x_offset = SCREEN_WIDTH - 250  # Position rabbits further to the left from the right edge
+    scale_factor = 1.25  # Scale factor for rabbit images
+
+    for idx, (rabbit, data) in enumerate(rabbits.items()):
+        # Load and scale the rabbit image
+        rabbit_img = load_image_safe(data["img"])
+        rabbit_img = pygame.transform.scale(rabbit_img, (int(rabbit_img.get_width() * scale_factor), int(rabbit_img.get_height() * scale_factor)))
+
+        # Display rabbit info
+        show_text(f"{rabbit}:", x_offset - 150, y_offset)  # Rabbit name
+        show_text(f"Owned: {data['count']}", x_offset - 150, y_offset + 30)  # Rabbit count
+        show_text(f"Rate: {data['rate']}/sec", x_offset - 150, y_offset + 60)  # Rate per second
+        show_text(f"Cost: {data['cost']}", x_offset - 150, y_offset + 90)  # Cost
+
+        # Display the rabbit image
+        screen.blit(rabbit_img, (x_offset, y_offset))  # Display rabbit image
+        y_offset += 150  # Increase spacing between rabbits to prevent overlap
+
+def generate_chocolates():
+    """Generate chocolates based on owned rabbits."""
+    global chocolates
+    for rabbit, data in rabbits.items():
+        chocolates += data['count'] * data['rate'] / 60  # Adjusted for frame rate (60 FPS)
+
+def buy_rabbit(rabbit_name):
+    """Buy a rabbit if player has enough chocolates."""
+    global chocolates, chocolates_per_second
+    rabbit = rabbits[rabbit_name]
+    if chocolates >= rabbit["cost"]:
+        chocolates -= rabbit["cost"]
+        rabbit["count"] += 1
+        chocolates_per_second += rabbit["rate"]
+        rabbit["cost"] = int(rabbit["cost"] * rabbit["scale"])  # Apply scaling factor to cost
+
+# Buff variables
+buff_active = False
+buff_end_time = 0
+production_multiplier = 1.0
+
+def apply_buff(buff_type):
+    global production_multiplier, buff_active, buff_end_time
+
+    if buff_type == "frenzy":
+        production_multiplier = 10.0
+        buff_end_time = pygame.time.get_ticks() + 100000  # 100 seconds
+        print("Frenzy activated!")
+    elif buff_type == "ultimate_frenzy":
+        production_multiplier = 100.0
+        buff_end_time = pygame.time.get_ticks() + 10000  # 10 seconds
+        print("Ultimate Frenzy activated!")
+    elif buff_type == "chocolate_for_everyone":
+        global chocolates
+        chocolates += chocolates  # Double current chocolates
+        print("Chocolate for Everyone activated!")
+        return
+
+    buff_active = True
+
+def check_buff_status():
+    global buff_active, production_multiplier
+    if buff_active and pygame.time.get_ticks() > buff_end_time:
+        production_multiplier = 1.0  # Reset multiplier
+        buff_active = False
+
+# Hershey's Kisses management
+kisses = []
+kiss_timer = 0
+kiss_interval = 200  # Milliseconds between kisses
+
+def spawn_kiss():
+    x_position = random.randint(0, SCREEN_WIDTH - hershey_kiss_img.get_width())
+    kisses.append([x_position, 0])  # Start at the top of the screen
+
+def update_kisses():
+    for kiss in kisses:
+        kiss[1] += 5  # Move kiss downwards
+
+def draw_kisses():
+    for kiss in kisses:
+        screen.blit(hershey_kiss_img, (kiss[0], kiss[1]))
+
+# Quote management
+quotes = [
+    "Everyone loves your chocolate!",
+    "You're making the world sweeter!",
+    "Your chocolate brings joy to all!",
+    "Keep spreading the love with chocolate!",
+    "You're a chocolate-making legend!",
+    "Chocolate makes everything better!",
+    "Your chocolate is a gift to the world!",
+]
+
+quote_timer = 0
+quote_interval = 7000  # New quote every 7 seconds
+quote_duration = 3000  # Display duration for quotes
+current_quote = random.choice(quotes)  # Initial quote
+
+def show_quote(text):
+    """Display a quote at the bottom center of the screen."""
+    img = font.render(text, True, WHITE)
+    text_rect = img.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT - 50))
+    screen.blit(img, text_rect)
+
+# Power-up logic
+def draw_powerups():
+    """Draw power-ups in the center of the screen."""
+    center_x = SCREEN_WIDTH // 2 - 150  # Move to the left side of the screen
+    y_offset = SCREEN_HEIGHT // 2 - (len(power_ups) * 50) // 2  # Center vertically
+    powerup_scale_factor = 0.3  # Scale down to 30%
+
+    for idx, power_up in enumerate(power_ups):
+        powerup_img = load_image_safe(power_up['img'])
+        powerup_img = pygame.transform.scale(powerup_img, 
+                                              (int(powerup_img.get_width() * powerup_scale_factor), 
+                                               int(powerup_img.get_height() * powerup_scale_factor)))  # Scale down
+        
+        # Positioning the power-up icon
+        powerup_rect = powerup_img.get_rect(center=(center_x, y_offset + idx * 60))
+        screen.blit(powerup_img, powerup_rect.topleft)  # Draw the power-up icon
+
+        # Show power-up name on hover
+        if powerup_rect.collidepoint(pygame.mouse.get_pos()):
+            show_text(f"{power_up['name']} - Cost: {power_up['cost']}", center_x - 100, y_offset + idx * 60)
+
+# Update the event handling in the game loop
+for event in pygame.event.get():
+    if event.type == pygame.QUIT:
+        pygame.quit()
+        sys.exit()
+
+    elif event.type == pygame.MOUSEBUTTONDOWN:
+        mouse_pos = event.pos
+        # Check if chocolate button is clicked
+        if chocolate_button_rect.collidepoint(mouse_pos):
+            chocolates += 1 * production_multiplier  # Apply click multiplier
+
+        # Check if any rabbit is bought
+        y_offset = 10  # Updated y_offset for rabbits
+        x_offset = SCREEN_WIDTH - 250
+        for rabbit_name in rabbits.keys():
+            if x_offset <= mouse_pos[0] <= x_offset + 100 and y_offset <= mouse_pos[1] <= y_offset + 150:
+                buy_rabbit(rabbit_name)
+            y_offset += 150
+
+        # Check if any power-up is bought
+        center_x = SCREEN_WIDTH // 2
+        for idx, power_up in enumerate(power_ups):
+            icon_rect = pygame.Rect(center_x - 25, SCREEN_HEIGHT // 2 - (len(power_ups) * 50) // 2 + idx * 50, 50, 50)
+            if icon_rect.collidepoint(mouse_pos):
+                buy_powerup(idx)
+
+def game_loop():
+    global chocolates, kiss_timer, current_quote
+    clock = pygame.time.Clock()
+
+    # Load and scale the chocolate button image
+    chocolate_img = load_image_safe("chocolate_button.png", (139, 69, 19))  # Chocolate is brown!
+    chocolate_img = pygame.transform.scale(chocolate_img, (400, 400))  # Scale to 400x400 pixels
+
+    # Create a rectangle for the chocolate button and center it further to the left
+    chocolate_button_rect = chocolate_img.get_rect(center=(SCREEN_WIDTH // 6, SCREEN_HEIGHT // 2 + 100))  # Centered further to the left
+
+    # Set dimensions for the black chocolate rectangles
+    chocolate_rect_width = 600
+    left_rect_x_position = -50
+    right_rect_x_position = SCREEN_WIDTH - chocolate_rect_width
+
+    # Initialize timers
+    quote_timer = pygame.time.get_ticks()
+    kiss_timer = pygame.time.get_ticks()
+
+    while True:
+        try:
+            screen.fill(WHITE)
+            background_scaled = pygame.transform.scale(background_img, (SCREEN_WIDTH, SCREEN_HEIGHT))
+            screen.blit(background_scaled, (0, 0))
+
+            pygame.draw.rect(screen, BLACK, (left_rect_x_position, 0, chocolate_rect_width, SCREEN_HEIGHT))
+            pygame.draw.rect(screen, BLACK, (right_rect_x_position, 0, chocolate_rect_width, SCREEN_HEIGHT))
+
+            screen.blit(chocolate_img, chocolate_button_rect.topleft)
+
+            show_text(f"Chocolates: {chocolates:.1f}", SCREEN_WIDTH // 6 - 70, chocolate_button_rect.top - 40)
+            show_text(f"Chocolates per second: {chocolates_per_second * production_multiplier:.1f}", SCREEN_WIDTH // 6 - 120, chocolate_button_rect.top - 80)
+
+            draw_shop()
+            draw_powerups()  # Draw power-ups
+
+            if chocolates >= 1000:
+                if pygame.time.get_ticks() - kiss_timer > kiss_interval:
+                    spawn_kiss()
+                    kiss_timer = pygame.time.get_ticks()
+                    if chocolates >= 100000:
+                        if pygame.time.get_ticks() - kiss_timer > kiss_interval:
+                            spawn_kiss()
+                    kiss_timer = pygame.time.get_ticks()
+                    if chocolates >= 10000000:
+                        if pygame.time.get_ticks() - kiss_timer > kiss_interval:
+                            spawn_kiss()
+                    kiss_timer = pygame.time.get_ticks()
+
+            update_kisses()
+            draw_kisses()
+
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    pygame.quit()
+                    sys.exit()
+
+                elif event.type == pygame.MOUSEBUTTONDOWN:
+                    mouse_pos = event.pos
+                    if chocolate_button_rect.collidepoint(mouse_pos):
+                        chocolates += 1 * production_multiplier
+
+                    y_offset = 10
+                    x_offset = SCREEN_WIDTH - 250
+                    for rabbit_name in rabbits.keys():
+                        if x_offset <= mouse_pos[0] <= x_offset + 100 and y_offset <= mouse_pos[1] <= y_offset + 150:
+                            buy_rabbit(rabbit_name)
+                        y_offset += 150
+
+                    center_x = SCREEN_WIDTH // 2 - 150
+                    for idx, power_up in enumerate(power_ups):
+                        powerup_img = load_image_safe(power_up['img'])
+                        powerup_rect = powerup_img.get_rect(center=(center_x, SCREEN_HEIGHT // 2 - (len(power_ups) * 50) // 2 + idx * 50))
+                        if powerup_rect.collidepoint(mouse_pos):
+                            buy_powerup(idx)
+
+            generate_chocolates()
+            check_buff_status()
+
+            if pygame.time.get_ticks() - quote_timer > quote_interval:
+                current_quote = random.choice(quotes)
+                quote_timer = pygame.time.get_ticks()
+
+            show_quote(current_quote)
+
+            pygame.display.flip()
+            clock.tick(60)
+
+        except Exception as e:
+            print(f"Error occurred: {e}")
+            pygame.quit()
+            sys.exit()
+
+
+#start the game
+game_loop()         
+
